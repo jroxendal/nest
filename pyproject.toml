@@ -1,0 +1,39 @@
+
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nest-query-parser"
+version = "0.1.0"
+description = "A parser for a query language that converts to Elasticsearch queries, enabling nested queries in a superset of query_string syntax."
+authors = [
+    { name = "Johan Roxendal", email = "johan@roxendal.com" }
+]
+readme = "README.md"
+requires-python = ">=3.6"
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent"
+]
+
+[project.urls]
+Homepage = "https://github.com/jroxendal/nest-query-parser"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools]
+packages = { find = { where = ["src"] } }
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "flake8"
+]
+
+[project.dependencies]
+tatsu = ">=5.6.0"
