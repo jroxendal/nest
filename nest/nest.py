@@ -45,6 +45,7 @@ GRAMMAR = r"""
         | expr 'OR' expr
         | 'NOT' expr
         | basic_match
+        | keyword_query
         ;
     
     nested_query
@@ -81,6 +82,10 @@ GRAMMAR = r"""
         | field:field ':' range:range_value
         ;
 
+    keyword_query
+        = /[^:>()[\]{}+]+/
+        ;
+
     field 
         = /[a-zA-Z_][a-zA-Z0-9_.]+/
         ;
@@ -92,7 +97,7 @@ GRAMMAR = r"""
 
     
     value
-        = /[a-zA-Z0-9_]+/
+        = /[^\s:>()[\]{}+]+/
         ;
 """
 
@@ -159,6 +164,8 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
                 return {"range": {field: range}}
             case [sub_expr, []]:
                 return process_expr(sub_expr)
+            case str() if ' ' in expr:
+                return {"query_string": {"query": expr}}
             case _:
                 logger.warning(f"Unrecognized expression: {expr}")
                 return expr
@@ -169,6 +176,10 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
 def test_parse_query():
     import json
 
+    assert json.dumps(parse_query("strindberg röda rummet")) == json.dumps(
+        {"query_string": {"query": "strindberg röda rummet"}}
+    )
+    
     assert json.dumps(parse_query("date:[2022-01-13 TO now]")) == json.dumps(
         {"range": {"date": {"gte": "2022-01-13", "lte": "now"}}}
     )
