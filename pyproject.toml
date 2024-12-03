@@ -3,7 +3,7 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nest-query-parser"
+name = "nest-es"
 version = "0.1.0"
 description = "A parser for a query language that converts to Elasticsearch queries, enabling nested queries in a superset of query_string syntax."
 authors = [
@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jroxendal/nest-query-parser"
+Homepage = "https://github.com/jroxendal/nest"
 
 [tool.setuptools.packages.find]
 where = ["."]
