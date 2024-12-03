@@ -1,6 +1,13 @@
-from flask import request, g
+try:
+    from flask import request, g
+except ImportError:
+    request = None
+    g = None
 from functools import wraps
-from fastapi import Request
+try:
+    from fastapi import Request
+except ImportError:
+    Request = None
 from typing import Callable
 from .nest import parse_query
 
