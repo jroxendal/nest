@@ -164,21 +164,22 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
                 return {"range": {field: range}}
             case [sub_expr, []]:
                 return process_expr(sub_expr)
-            case str() if ' ' in expr:
+            case str():
                 return {"query_string": {"query": expr}}
-                assert json.dumps(parse_query("date:[2022-01-13 TO now]")) == json.dumps(
-        {"range": {"date": {"gte": "2022-01-13", "lte": "now"}}}
-    )
-case _:
+            case _:
                 logger.warning(f"Unrecognized expression: {expr}")
                 return expr
 
-    return process_expr(ast)
+    return process_expr(ast) 
 
 
 def test_parse_query():
     import json
 
+    
+    assert json.dumps(parse_query("keyword")) == json.dumps(
+        {"query_string": {"query": "keyword"}}
+    )
     
     assert json.dumps(parse_query("date:[2022-01-13 TO now]")) == json.dumps(
         {"range": {"date": {"gte": "2022-01-13", "lte": "now"}}}
