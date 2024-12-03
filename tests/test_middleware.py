@@ -10,9 +10,9 @@ class FlaskMiddlewareTestCase(unittest.TestCase):
         self.app = Flask(__name__)
         flask_query_parser_middleware(self.app)
 
-        @self.app.route('/search')
+        @self.app.route('/search/<other_param>')
         @use_flask_query_parser
-        def search(parsed_query):
+        def search(other_param, parsed_query):
             if parsed_query:
                 return parsed_query
             return {"error": "Invalid query"}
@@ -20,12 +20,12 @@ class FlaskMiddlewareTestCase(unittest.TestCase):
         self.client = self.app.test_client()
 
     def test_flask_query_parser_middleware(self):
-        response = self.client.get('/search?query=field:value')
+        response = self.client.get('/search/1234?query=field:value')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json, {"match": {"field": "value"}})
 
     def test_flask_query_parser_middleware_invalid_query(self):
-        response = self.client.get('/search?query=invalid_query')
+        response = self.client.get('/search/1234?query=>invalid')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json, {"error": "Invalid query"})
 
@@ -49,7 +49,7 @@ class FastAPIMiddlewareTestCase(unittest.TestCase):
         self.assertEqual(response.json(), {"match": {"field": "value"}})
 
     def test_fastapi_query_parser_middleware_invalid_query(self):
-        response = self.client.get('/search?query=invalid_query')
+        response = self.client.get('/search?query=>invalid')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"error": "Invalid query"})
 

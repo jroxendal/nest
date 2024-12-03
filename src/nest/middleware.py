@@ -15,6 +15,8 @@ from .nest import parse_query
 def flask_query_parser_middleware(app, query_param='query'):
     @app.before_request
     def before_request():
+        # Store all query parameters
+        g.query_args = request.args.to_dict()
         query_string = request.args.get(query_param)
         if query_string:
             try:
@@ -47,6 +49,11 @@ def use_flask_query_parser(f: Callable):
     def decorated_function(*args, **kwargs):
         if hasattr(g, 'parsed_query'):
             kwargs['parsed_query'] = g.parsed_query
+        if hasattr(g, 'query_args'):
+            # Add all query parameters except the parsed one
+            query_args = g.query_args.copy()
+            query_args.pop('query', None)  # Remove the special query parameter
+            kwargs.update(query_args)
         return f(*args, **kwargs)
     return decorated_function
 

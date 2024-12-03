@@ -52,7 +52,7 @@ from flask import Flask, jsonify, g
 from nest.middleware import flask_query_parser_middleware, use_flask_query_parser
 
 app = Flask(__name__)
-flask_query_parser_middleware(app)
+flask_query_parser_middleware(app, query_param="q")
 
 @app.route('/search')
 @use_flask_query_parser
