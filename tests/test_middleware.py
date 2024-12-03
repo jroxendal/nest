@@ -13,6 +13,7 @@ class FlaskMiddlewareTestCase(unittest.TestCase):
         @self.app.route('/search/<other_param>')
         @use_flask_query_parser
         def search(other_param, parsed_query):
+            assert other_param == '1234'
             if parsed_query:
                 return parsed_query
             return {"error": "Invalid query"}

@@ -54,7 +54,7 @@ GRAMMAR = r"""
 
     nested_expr
         = 
-        | expr ('+' | 'AND') expr
+        | expr '~' expr
         | '(' ~ @:nested_expr ')'
         ;
 
@@ -140,7 +140,7 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
         return {"match": {field: value}}
 
     def create_bool_query(operator: str, queries: list) -> Dict[str, Any]:
-        bool_type = {"AND": "must", "+": "must", "OR": "should", "NOT": "must_not"}[operator]
+        bool_type = {"AND": "must", "~": "must", "OR": "should", "NOT": "must_not"}[operator]
         return {"bool": {bool_type: queries}}
 
     def create_nested_query(path: str, query: Dict[str, Any]) -> Dict[str, Any]:
@@ -154,7 +154,7 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
                 return create_bool_query("NOT", [process_expr(sub_expr)])
             case [field, ">", nested_expr]:
                 return create_nested_query(field, process_expr(nested_expr))
-            case [sub_expr1, "+", sub_expr2]:
+            case [sub_expr1, "~", sub_expr2]:
                 return {"bool": {"must": [process_expr(sub_expr1), process_expr(sub_expr2)]}}
             case [sub_expr1, operator, sub_expr2]:
                 return create_bool_query(
@@ -190,7 +190,7 @@ def test_parse_query():
 
     # Test nested author query with NOT condition
     assert json.dumps(
-        parse_query("authors>(authors.surname:Strindberg + (NOT authors.type:editor))")
+        parse_query("authors>(authors.surname:Strindberg ~ (NOT authors.type:editor))")
     ) == json.dumps(
         {
             "nested": {
