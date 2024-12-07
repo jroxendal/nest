@@ -8,7 +8,11 @@ import argparse
 
 
 def search(
-    index: str, query_string: str, dump: bool = False, source_includes: str = ""
+    index: str,
+    query_string: str,
+    dump: bool = False,
+    source_includes: str = "",
+    size: int = 10,
 ) -> None:
     client = OpenSearch(
         hosts=[{"host": "localhost", "port": 9200}],
@@ -24,12 +28,14 @@ def search(
                 f"?_source_includes={source_includes}" if source_includes else ""
             )
             print(
-                f"GET {index}/_search{maybe_source_includes} \n{json.dumps({'query': es_query}, indent=2)}"
+                f"GET {index}/_search{maybe_source_includes} \n{json.dumps({'query': es_query, 'size': size}, indent=2)}"
             )
             return
 
         response = client.search(
-            index=index, body={"query": es_query}, _source_includes=source_includes
+            index=index,
+            body={"query": es_query, "size": size},
+            _source_includes=source_includes,
         )
         print(json.dumps(response))
 
@@ -46,9 +52,12 @@ def main():
     parser.add_argument(
         "-d", "--dump", action="store_true", help="Dump query instead of executing"
     )
+    parser.add_argument(
+        "-s", "--size", type=int, default=10, help="Number of results to return"
+    )
 
     args = parser.parse_args()
-    search(args.index, args.query, args.dump, args.includes)
+    search(args.index, args.query, args.dump, args.includes, args.size)
 
 
 if __name__ == "__main__":
