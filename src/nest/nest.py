@@ -56,6 +56,7 @@ GRAMMAR = r"""
         = 
         | expr '~' expr
         | '(' ~ @:nested_expr ')'
+        | expr
         ;
 
     datetime_value
@@ -120,6 +121,7 @@ def parse_query(query_string: str) -> Dict[str, Any]:
         ast = parser.parse(query_string)
         return ast_to_es(asjson(ast))
     except FailedParse as e:
+        logger.exception(f"Failed to parse query: {query_string}")
         raise ValueError(f"Invalid query string: {query_string}") from e
 
 
@@ -140,7 +142,9 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
         return {"match": {field: value}}
 
     def create_bool_query(operator: str, queries: list) -> Dict[str, Any]:
-        bool_type = {"AND": "must", "~": "must", "OR": "should", "NOT": "must_not"}[operator]
+        bool_type = {"AND": "must", "~": "must", "OR": "should", "NOT": "must_not"}[
+            operator
+        ]
         return {"bool": {bool_type: queries}}
 
     def create_nested_query(path: str, query: Dict[str, Any]) -> Dict[str, Any]:
@@ -155,7 +159,9 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
             case [field, ">", nested_expr]:
                 return create_nested_query(field, process_expr(nested_expr))
             case [sub_expr1, "~", sub_expr2]:
-                return {"bool": {"must": [process_expr(sub_expr1), process_expr(sub_expr2)]}}
+                return {
+                    "bool": {"must": [process_expr(sub_expr1), process_expr(sub_expr2)]}
+                }
             case [sub_expr1, operator, sub_expr2]:
                 return create_bool_query(
                     operator, [process_expr(sub_expr1), process_expr(sub_expr2)]
@@ -170,23 +176,28 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
                 logger.warning(f"Unrecognized expression: {expr}")
                 return expr
 
-    return process_expr(ast) 
+    return process_expr(ast)
 
 
 def test_parse_query():
     import json
 
-    
     assert json.dumps(parse_query("keyword")) == json.dumps(
         {"query_string": {"query": "keyword"}}
     )
-    
+
     assert json.dumps(parse_query("date:[2022-01-13 TO now]")) == json.dumps(
         {"range": {"date": {"gte": "2022-01-13", "lte": "now"}}}
     )
 
     # Test simple field value
-    assert json.dumps(parse_query("field:value")) == json.dumps({"match": {"field": "value"}})
+    assert json.dumps(parse_query("field:value")) == json.dumps(
+        {"match": {"field": "value"}}
+    )
+
+    assert json.dumps(parse_query("authors>authors.show:false")) == json.dumps(
+        {"nested": {"path": "authors", "query": {"match": {"authors.show": "false"}}}}
+    )
 
     # Test nested author query with NOT condition
     assert json.dumps(
@@ -199,7 +210,11 @@ def test_parse_query():
                     "bool": {
                         "must": [
                             {"match": {"authors.surname": "Strindberg"}},
-                            {"bool": {"must_not": [{"match": {"authors.type": "editor"}}]}},
+                            {
+                                "bool": {
+                                    "must_not": [{"match": {"authors.type": "editor"}}]
+                                }
+                            },
                         ]
                     }
                 },
