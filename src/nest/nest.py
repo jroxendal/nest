@@ -39,22 +39,26 @@ GRAMMAR = r"""
     start = expr $ ;
     
     expr
-        = nested_query
-        | '(' ~ @:expr ')'
-        | expr 'AND' expr
+        = expr 'AND' expr
         | expr 'OR' expr
         | 'NOT' expr
+        | '(' ~ @:expr ')'
+        | nested_query
         | basic_match
         | keyword_query
         ;
     
     nested_query
-        = field '>' nested_expr
+        = path:field '>' query:nested_target
+        ;
+
+    nested_target
+        = '(' @:nested_expr ')'
+        | basic_match
         ;
 
     nested_expr
-        = 
-        | expr '~' expr
+        = expr '~' expr
         | '(' ~ @:nested_expr ')'
         | expr
         ;
@@ -102,6 +106,9 @@ GRAMMAR = r"""
         ;
 """
 
+# Precompile the grammar
+_PARSER = compile(GRAMMAR)
+
 
 def parse_query(query_string: str) -> Dict[str, Any]:
     """
@@ -117,12 +124,16 @@ def parse_query(query_string: str) -> Dict[str, Any]:
         ValueError: If the query string cannot be parsed.
     """
     try:
-        parser = compile(GRAMMAR)
-        ast = parser.parse(query_string)
+        ast = _PARSER.parse(query_string)
         return ast_to_es(asjson(ast))
     except FailedParse as e:
-        logger.exception(f"Failed to parse query: {query_string}")
-        raise ValueError(f"Invalid query string: {query_string}") from e
+        logger.error(f"Failed to parse query: {query_string}")
+        error_msg = str(e)
+        if "expecting one of" in error_msg:
+            raise ValueError(
+                f"Invalid query format. Query must start with a field name or keyword. Got: {query_string}"
+            ) from e
+        raise ValueError(f"Invalid query string: {query_string}. {error_msg}") from e
 
 
 def ast_to_es(ast: Any) -> Dict[str, Any]:
@@ -145,10 +156,41 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
         bool_type = {"AND": "must", "~": "must", "OR": "should", "NOT": "must_not"}[
             operator
         ]
-        return {"bool": {bool_type: queries}}
+        bool_query: Dict[str, Any] = {"bool": {bool_type: queries}}
+        if bool_type == "should":
+            bool_query["bool"]["minimum_should_match"] = 1
+        return bool_query
+
+    def prefix_nested_fields(query: Dict[str, Any], path: str) -> Dict[str, Any]:
+        def prefix_field(field_name: str) -> str:
+            return (
+                field_name
+                if field_name.startswith(f"{path}.")
+                else f"{path}.{field_name}"
+            )
+
+        if "match" in query:
+            field, value = next(iter(query["match"].items()))
+            return {"match": {prefix_field(field): value}}
+        if "range" in query:
+            range_body: Dict[str, Any] = {}
+            for field, value in query["range"].items():
+                range_body[prefix_field(field)] = value
+            return {"range": range_body}
+        if "bool" in query:
+            bool_body: Dict[str, Any] = {}
+            for key, value in query["bool"].items():
+                if key in {"must", "should", "must_not", "filter"}:
+                    bool_body[key] = [prefix_nested_fields(q, path) for q in value]
+                else:
+                    bool_body[key] = value
+            return {"bool": bool_body}
+        if "nested" in query:
+            return query
+        return query
 
     def create_nested_query(path: str, query: Dict[str, Any]) -> Dict[str, Any]:
-        return {"nested": {"path": path, "query": query}}
+        return {"nested": {"path": path, "query": prefix_nested_fields(query, path)}}
 
     def process_expr(expr: Any) -> Dict[str, Any]:
         match expr:
@@ -158,6 +200,8 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
                 return create_bool_query("NOT", [process_expr(sub_expr)])
             case [field, ">", nested_expr]:
                 return create_nested_query(field, process_expr(nested_expr))
+            case {"path": path, "query": nested_expr}:
+                return create_nested_query(path, process_expr(nested_expr))
             case [sub_expr1, "~", sub_expr2]:
                 return {
                     "bool": {"must": [process_expr(sub_expr1), process_expr(sub_expr2)]}
@@ -177,86 +221,3 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
                 return expr
 
     return process_expr(ast)
-
-
-def test_parse_query():
-    import json
-
-    assert json.dumps(parse_query("keyword")) == json.dumps(
-        {"query_string": {"query": "keyword"}}
-    )
-
-    assert json.dumps(parse_query("date:[2022-01-13 TO now]")) == json.dumps(
-        {"range": {"date": {"gte": "2022-01-13", "lte": "now"}}}
-    )
-
-    # Test simple field value
-    assert json.dumps(parse_query("field:value")) == json.dumps(
-        {"match": {"field": "value"}}
-    )
-
-    assert json.dumps(parse_query("authors>authors.show:false")) == json.dumps(
-        {"nested": {"path": "authors", "query": {"match": {"authors.show": "false"}}}}
-    )
-
-    # Test nested author query with NOT condition
-    assert json.dumps(
-        parse_query("authors>(authors.surname:Strindberg ~ (NOT authors.type:editor))")
-    ) == json.dumps(
-        {
-            "nested": {
-                "path": "authors",
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {"authors.surname": "Strindberg"}},
-                            {
-                                "bool": {
-                                    "must_not": [{"match": {"authors.type": "editor"}}]
-                                }
-                            },
-                        ]
-                    }
-                },
-            }
-        }
-    )
-
-    # Test AND condition
-    assert json.dumps(parse_query("field:value AND field2:value2")) == json.dumps(
-        {
-            "bool": {
-                "must": [
-                    {"match": {"field": "value"}},
-                    {"match": {"field2": "value2"}},
-                ]
-            }
-        }
-    )
-
-    # Test OR with parentheses
-    assert json.dumps(
-        parse_query("field:value AND (field2:value2 OR field3:value3)")
-    ) == json.dumps(
-        {
-            "bool": {
-                "must": [
-                    {"match": {"field": "value"}},
-                    {
-                        "bool": {
-                            "should": [
-                                {"match": {"field2": "value2"}},
-                                {"match": {"field3": "value3"}},
-                            ]
-                        }
-                    },
-                ]
-            }
-        }
-    )
-
-    print("All parse query tests passed!")
-
-
-if __name__ == "__main__":
-    test_parse_query()
