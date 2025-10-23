@@ -15,6 +15,9 @@ These doctests cover the behaviour previously exercised in ``test_parse_query``.
     >>> parse_query("field:value") == {'match': {'field': 'value'}}
     True
 
+    >>> parse_query("_exists_:type") == {'exists': {'field': 'type'}}
+    True
+
     >>> parse_query("authors>authors.show:false") == {'nested': {'path': 'authors', 'query': {'match': {'authors.show': 'false'}}}}
     True
 
@@ -36,12 +39,31 @@ These doctests cover the behaviour previously exercised in ``test_parse_query``.
     ... }
     True
 
+    >>> parse_query("authors>(_exists_:type)") == {
+    ...     'nested': {
+    ...         'path': 'authors',
+    ...         'query': {'exists': {'field': 'authors.type'}}
+    ...     }
+    ... }
+    True
+
     >>> parse_query("field:value AND field2:value2") == {
     ...     'bool': {
     ...         'must': [
     ...             {'match': {'field': 'value'}},
     ...             {'match': {'field2': 'value2'}}
     ...         ]
+    ...     }
+    ... }
+    True
+
+    >>> parse_query("texttype:(diktsamling OR dikt)") == {
+    ...     'bool': {
+    ...         'should': [
+    ...             {'match': {'texttype': 'diktsamling'}},
+    ...             {'match': {'texttype': 'dikt'}}
+    ...         ],
+    ...         'minimum_should_match': 1
     ...     }
     ... }
     True

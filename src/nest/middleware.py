@@ -76,7 +76,12 @@ def use_fastapi_query_parser(f: Callable):
     @wraps(f)
     async def decorated_function(*args, **kwargs):
         request = kwargs.get("request")
-        if request and hasattr(request, "scope"):
+        if request is None:
+            raise RuntimeError(
+                "use_fastapi_query_parser requires the decorated function to accept "
+                "a FastAPI Request object via the keyword argument 'request'."
+            )
+        if hasattr(request, "scope"):
             # Get the parsed_query from the request scope
             parsed_query = request.scope.get("parsed_query")
             kwargs["parsed_query"] = parsed_query

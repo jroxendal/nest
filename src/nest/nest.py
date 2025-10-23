@@ -83,12 +83,17 @@ GRAMMAR = r"""
         ;
     
     basic_match
-        = field ':' value
+        = grouped_match
+        | field ':' value
         | field:field ':' range:range_value
         ;
 
+    grouped_match
+        = field:field ':' '(' group:expr ')'
+        ;
+
     keyword_query
-        = /[^:>()[\]{}+]+/
+        = /[^\s:>()[\]{}+]+/
         ;
 
     field 
@@ -152,6 +157,9 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
     def create_match(field: str, value: str) -> Dict[str, Any]:
         return {"match": {field: value}}
 
+    def create_exists(field: str) -> Dict[str, Any]:
+        return {"exists": {"field": field}}
+
     def create_bool_query(operator: str, queries: list) -> Dict[str, Any]:
         bool_type = {"AND": "must", "~": "must", "OR": "should", "NOT": "must_not"}[
             operator
@@ -177,6 +185,9 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
             for field, value in query["range"].items():
                 range_body[prefix_field(field)] = value
             return {"range": range_body}
+        if "exists" in query:
+            exists_field = query["exists"].get("field")
+            return {"exists": {"field": prefix_field(exists_field)}}
         if "bool" in query:
             bool_body: Dict[str, Any] = {}
             for key, value in query["bool"].items():
@@ -195,6 +206,8 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
     def process_expr(expr: Any) -> Dict[str, Any]:
         match expr:
             case [field, ":", value]:
+                if field == "_exists_":
+                    return create_exists(value)
                 return create_match(field, value)
             case ["NOT", sub_expr]:
                 return create_bool_query("NOT", [process_expr(sub_expr)])
@@ -202,6 +215,27 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
                 return create_nested_query(field, process_expr(nested_expr))
             case {"path": path, "query": nested_expr}:
                 return create_nested_query(path, process_expr(nested_expr))
+            case {"field": field, "group": group_expr}:
+                def apply_group(expr):
+                    if isinstance(expr, str):
+                        return [field, ":", expr]
+                    if isinstance(expr, tuple):
+                        expr = list(expr)
+                    if isinstance(expr, list):
+                        if not expr:
+                            return expr
+                        if len(expr) == 2 and expr[0] == "NOT":
+                            return ["NOT", apply_group(expr[1])]
+                        if len(expr) == 3 and expr[1] in {"AND", "OR", "~"}:
+                            return [
+                                apply_group(expr[0]),
+                                expr[1],
+                                apply_group(expr[2]),
+                            ]
+                        return [apply_group(item) for item in expr]
+                    return expr
+
+                return process_expr(apply_group(group_expr))
             case [sub_expr1, "~", sub_expr2]:
                 return {
                     "bool": {"must": [process_expr(sub_expr1), process_expr(sub_expr2)]}
@@ -221,3 +255,12 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
                 return expr
 
     return process_expr(ast)
+
+
+if __name__ == "__main__":
+    # Example usage
+    example_query = "(gender:female OR authors>(gender:female ~ NOT _exists_:type)) AND (texttype:(diktsamling OR dikt)) AND ((export>type:pdf AND license:pd) OR mediatype:pdf)"
+    es_query = parse_query(example_query)
+    import json
+
+    print(json.dumps(es_query, indent=2))
