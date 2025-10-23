@@ -26,7 +26,7 @@ es_query = parse_query(query_string)
 print(es_query)
 # Output: {'match': {'field': 'value'}}
 
-print(parse_query("authors>(authors.surname:Strindberg + (NOT authors.type:editor))"))
+print(parse_query("authors>(surname:Strindberg + (NOT type:editor))"))
 #output:
 {
     "nested": {
