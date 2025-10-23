@@ -36,8 +36,24 @@ GRAMMAR = r"""
     @@grammar::Query
     @@whitespace :: /[ \t\n\r]*/
 
-    start = expr $ ;
-    
+    start = directives:directive_list expr:expr $ ;
+
+    directive_list
+        = {directive}
+        ;
+
+    directive
+        = '@' key:directive_key '=' value:directive_value
+        ;
+
+    directive_key
+        = /[a-zA-Z_][a-zA-Z0-9_.]+/
+        ;
+
+    directive_value
+        = /[^\s]+/
+        ;
+
     expr
         = expr 'AND' expr
         | expr 'OR' expr
@@ -130,7 +146,17 @@ def parse_query(query_string: str) -> Dict[str, Any]:
     """
     try:
         ast = _PARSER.parse(query_string)
-        return ast_to_es(asjson(ast))
+        ast_json = asjson(ast)
+        directives_list = (
+            ast_json.get("directives", []) if isinstance(ast_json, dict) else []
+        )
+        directives = {
+            item["key"]: item["value"]
+            for item in directives_list
+            if isinstance(item, dict)
+        }
+        expr = ast_json.get("expr") if isinstance(ast_json, dict) else ast_json
+        return ast_to_es(expr, directives)
     except FailedParse as e:
         logger.error(f"Failed to parse query: {query_string}")
         error_msg = str(e)
@@ -141,7 +167,7 @@ def parse_query(query_string: str) -> Dict[str, Any]:
         raise ValueError(f"Invalid query string: {query_string}. {error_msg}") from e
 
 
-def ast_to_es(ast: Any) -> Dict[str, Any]:
+def ast_to_es(ast: Any, directives: Dict[str, str] | None = None) -> Dict[str, Any]:
     """
     Converts an abstract syntax tree (AST) into an Elasticsearch-compatible JSON query.
 
@@ -153,6 +179,25 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
     """
     if not ast:
         return {}
+
+    directives = directives or {}
+
+    QUERY_STRING_OPTION_KEYS = {
+        "default_field",
+        "default_operator",
+        "analyzer",
+        "quote_analyzer",
+        "allow_leading_wildcard",
+        "auto_generate_synonyms_phrase_query",
+    }
+
+    def apply_query_string_options(query: Dict[str, Any]) -> Dict[str, Any]:
+        options = {
+            k: directives[k] for k in QUERY_STRING_OPTION_KEYS if k in directives
+        }
+        if not options:
+            return {"query_string": query}
+        return {"query_string": {**query, **options}}
 
     def create_match(field: str, value: str) -> Dict[str, Any]:
         return {"match": {field: value}}
@@ -216,6 +261,7 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
             case {"path": path, "query": nested_expr}:
                 return create_nested_query(path, process_expr(nested_expr))
             case {"field": field, "group": group_expr}:
+
                 def apply_group(expr):
                     if isinstance(expr, str):
                         return [field, ":", expr]
@@ -249,7 +295,7 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
             case [sub_expr, []]:
                 return process_expr(sub_expr)
             case str():
-                return {"query_string": {"query": expr}}
+                return apply_query_string_options({"query": expr})
             case _:
                 logger.warning(f"Unrecognized expression: {expr}")
                 return expr
@@ -259,7 +305,7 @@ def ast_to_es(ast: Any) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     # Example usage
-    example_query = "(gender:female OR authors>(gender:female ~ NOT _exists_:type)) AND (texttype:(diktsamling OR dikt)) AND ((export>type:pdf AND license:pd) OR mediatype:pdf)"
+    example_query = "@default_field=title (gender:female OR authors>(gender:female ~ NOT _exists_:type)) AND (texttype:(diktsamling OR dikt)) AND ((export>type:pdf AND license:pd) OR mediatype:pdf)"
     es_query = parse_query(example_query)
     import json
 
