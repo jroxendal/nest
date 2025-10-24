@@ -61,6 +61,7 @@ GRAMMAR = r"""
         | '(' ~ @:expr ')'
         | nested_query
         | basic_match
+        | keyword_sequence
         | keyword_query
         ;
     
@@ -110,6 +111,10 @@ GRAMMAR = r"""
 
     keyword_query
         = /[^\s:>()[\]{}+]+/
+        ;
+
+    keyword_sequence
+        = first:keyword_query rest:{keyword_query}
         ;
 
     field 
@@ -189,12 +194,22 @@ def ast_to_es(ast: Any, directives: Dict[str, str] | None = None) -> Dict[str, A
         "quote_analyzer",
         "allow_leading_wildcard",
         "auto_generate_synonyms_phrase_query",
+        "fields",
     }
 
     def apply_query_string_options(query: Dict[str, Any]) -> Dict[str, Any]:
-        options = {
-            k: directives[k] for k in QUERY_STRING_OPTION_KEYS if k in directives
-        }
+        options: Dict[str, Any] = {}
+        for key in QUERY_STRING_OPTION_KEYS:
+            if key not in directives:
+                continue
+            value = directives[key]
+            if key == "fields":
+                # Split comma separated fields, ignoring empty parts.
+                parsed_fields = [f.strip() for f in value.split(",") if f.strip()]
+                if parsed_fields:
+                    options[key] = parsed_fields
+                continue
+            options[key] = value
         if not options:
             return {"query_string": query}
         return {"query_string": {**query, **options}}
@@ -260,6 +275,15 @@ def ast_to_es(ast: Any, directives: Dict[str, str] | None = None) -> Dict[str, A
                 return create_nested_query(field, process_expr(nested_expr))
             case {"path": path, "query": nested_expr}:
                 return create_nested_query(path, process_expr(nested_expr))
+            case {"first": first, "rest": rest}:
+                tokens = [first, *(rest or [])]
+                if not tokens:
+                    return {}
+                if len(tokens) == 1:
+                    return apply_query_string_options({"query": tokens[0]})
+                # Treat space-separated keywords as a single query_string expression.
+                combined = " ".join(tokens)
+                return apply_query_string_options({"query": combined})
             case {"field": field, "group": group_expr}:
 
                 def apply_group(expr):
@@ -294,6 +318,9 @@ def ast_to_es(ast: Any, directives: Dict[str, str] | None = None) -> Dict[str, A
                 return {"range": {field: range}}
             case [sub_expr, []]:
                 return process_expr(sub_expr)
+            case list() as items if all(isinstance(item, str) for item in items):
+                combined = " ".join(items)
+                return apply_query_string_options({"query": combined})
             case str():
                 return apply_query_string_options({"query": expr})
             case _:
