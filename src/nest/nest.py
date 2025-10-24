@@ -55,10 +55,28 @@ GRAMMAR = r"""
         ;
 
     expr
-        = expr 'AND' expr
-        | expr 'OR' expr
-        | 'NOT' expr
-        | '(' ~ @:expr ')'
+        = or_expr
+        ;
+
+    or_expr
+        = left:and_expr rest:{'OR' right:and_expr}
+        ;
+
+    and_expr
+        = left:tilde_expr rest:{'AND' right:tilde_expr}
+        ;
+
+    tilde_expr
+        = left:not_expr rest:{'~' right:not_expr}
+        ;
+
+    not_expr
+        = 'NOT' not_expr
+        | primary
+        ;
+
+    primary
+        = '(' ~ @:expr ')'
         | nested_query
         | basic_match
         | keyword_sequence
@@ -75,9 +93,7 @@ GRAMMAR = r"""
         ;
 
     nested_expr
-        = expr '~' expr
-        | '(' ~ @:nested_expr ')'
-        | expr
+        = expr
         ;
 
     datetime_value
@@ -114,7 +130,11 @@ GRAMMAR = r"""
         ;
 
     keyword_sequence
-        = first:keyword_query rest:{keyword_query}
+        = first:keyword rest:{keyword}
+        ;
+
+    keyword
+        = !("AND" | "OR" | "NOT") /[^\s:>()[\]{}+~]+/
         ;
 
     field 
@@ -196,6 +216,57 @@ def ast_to_es(ast: Any, directives: Dict[str, str] | None = None) -> Dict[str, A
         "auto_generate_synonyms_phrase_query",
         "fields",
     }
+
+    def unwrap(node: Any) -> Any:
+        while (
+            isinstance(node, dict)
+            and set(node.keys()) <= {"left", "rest"}
+            and (not node.get("rest"))
+            and "left" in node
+        ):
+            node = node["left"]
+        return node
+
+    def simplify(node: Any) -> Any:
+        node = unwrap(node)
+
+        if isinstance(node, dict):
+            if "first" in node:
+                tokens = [node["first"], *(node.get("rest") or [])]
+                tokens = [t for t in tokens if t is not None]
+                if len(tokens) == 1:
+                    return tokens[0]
+                return tokens
+
+            if "path" in node and "query" in node:
+                return {"path": node["path"], "query": simplify(node["query"])}
+
+            if "field" in node and "group" in node:
+                return {"field": node["field"], "group": simplify(node["group"])}
+
+            if "field" in node and "range" in node:
+                return {"field": node["field"], "range": simplify(node["range"])}
+
+            if "left" in node:
+                left_expr = simplify(node["left"])
+                rest_entries = node.get("rest") or []
+                result_expr = left_expr
+                for entry in rest_entries:
+                    if not entry:
+                        continue
+                    if isinstance(entry, list) and len(entry) == 2:
+                        operator, operand = entry
+                        result_expr = [result_expr, operator, simplify(operand)]
+                    else:
+                        result_expr = [result_expr, simplify(entry)]
+                return result_expr
+
+            return {key: simplify(value) for key, value in node.items()}
+
+        if isinstance(node, list):
+            return [simplify(item) for item in node]
+
+        return node
 
     def apply_query_string_options(query: Dict[str, Any]) -> Dict[str, Any]:
         options: Dict[str, Any] = {}
@@ -327,7 +398,8 @@ def ast_to_es(ast: Any, directives: Dict[str, str] | None = None) -> Dict[str, A
                 logger.warning(f"Unrecognized expression: {expr}")
                 return expr
 
-    return process_expr(ast)
+    simplified_ast = simplify(ast)
+    return process_expr(simplified_ast)
 
 
 if __name__ == "__main__":

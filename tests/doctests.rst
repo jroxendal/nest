@@ -111,3 +111,38 @@ These doctests cover the behaviour previously exercised in ``test_parse_query``.
     ...     }
     ... }
     True
+
+    >>> parse_query("@fields=title,main_author.full_name (eino leino AND (export>type:pdf AND license:pd) OR mediatype:pdf)") == {
+    ...     'bool': {
+    ...         'should': [
+    ...             {
+    ...                 'bool': {
+    ...                     'must': [
+    ...                         {
+    ...                             'query_string': {
+    ...                                 'query': 'eino leino',
+    ...                                 'fields': ['title', 'main_author.full_name']
+    ...                             }
+    ...                         },
+    ...                         {
+    ...                             'bool': {
+    ...                                 'must': [
+    ...                                     {
+    ...                                         'nested': {
+    ...                                             'path': 'export',
+    ...                                             'query': {'match': {'export.type': 'pdf'}}
+    ...                                         }
+    ...                                     },
+    ...                                     {'match': {'license': 'pd'}}
+    ...                                 ]
+    ...                             }
+    ...                         }
+    ...                     ]
+    ...                 }
+    ...             },
+    ...             {'match': {'mediatype': 'pdf'}}
+    ...         ],
+    ...         'minimum_should_match': 1
+    ...     }
+    ... }
+    True

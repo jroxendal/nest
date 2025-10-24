@@ -10,6 +10,7 @@ try:
 except ImportError:
     Request = None
 from typing import Callable, Any
+import inspect
 from starlette.middleware.base import BaseHTTPMiddleware
 from .nest import parse_query
 
@@ -73,16 +74,29 @@ def use_flask_query_parser(f: Callable):
 
 # FastAPI Decorator
 def use_fastapi_query_parser(f: Callable):
+    signature = inspect.signature(f)
+    expects_request_param = "request" in signature.parameters
+
     @wraps(f)
     async def decorated_function(*args, **kwargs):
+        if not expects_request_param:
+            raise RuntimeError(
+                "use_fastapi_query_parser requires the decorated function to accept "
+                "a FastAPI Request object via the keyword argument 'request'."
+            )
+
         request = kwargs.get("request")
+        if request is None:
+            bound = signature.bind_partial(*args, **kwargs)
+            request = bound.arguments.get("request")
+
         if request is None:
             raise RuntimeError(
                 "use_fastapi_query_parser requires the decorated function to accept "
                 "a FastAPI Request object via the keyword argument 'request'."
             )
+
         if hasattr(request, "scope"):
-            # Get the parsed_query from the request scope
             parsed_query = request.scope.get("parsed_query")
             kwargs["parsed_query"] = parsed_query
         return await f(*args, **kwargs)
