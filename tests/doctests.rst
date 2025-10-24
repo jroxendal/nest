@@ -29,6 +29,14 @@ These doctests cover the behaviour previously exercised in ``test_parse_query``.
     ... }
     True
 
+    >>> parse_query("@type=cross_fields hej") == {
+    ...     'query_string': {
+    ...         'query': 'hej',
+    ...         'type': 'cross_fields'
+    ...     }
+    ... }
+    True
+
     >>> parse_query("authors>authors.show:false") == {'nested': {'path': 'authors', 'query': {'match': {'authors.show': 'false'}}}}
     True
 

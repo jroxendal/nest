@@ -215,6 +215,7 @@ def ast_to_es(ast: Any, directives: Dict[str, str] | None = None) -> Dict[str, A
         "allow_leading_wildcard",
         "auto_generate_synonyms_phrase_query",
         "fields",
+        "type",
     }
 
     def unwrap(node: Any) -> Any:
