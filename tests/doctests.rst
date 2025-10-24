@@ -21,6 +21,14 @@ These doctests cover the behaviour previously exercised in ``test_parse_query``.
     >>> parse_query("@default_field=title hej") == {'query_string': {'query': 'hej', 'default_field': 'title'}}
     True
 
+    >>> parse_query("@default_operator=AND hej du") == {
+    ...     'query_string': {
+    ...         'query': 'hej du',
+    ...         'default_operator': 'AND'
+    ...     }
+    ... }
+    True
+
     >>> parse_query("authors>authors.show:false") == {'nested': {'path': 'authors', 'query': {'match': {'authors.show': 'false'}}}}
     True
 
