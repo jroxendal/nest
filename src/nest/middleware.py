@@ -16,7 +16,13 @@ from .nest import parse_query
 
 
 # Flask Middleware
-def flask_query_parser_middleware(app, query_param="query"):
+def flask_query_parser_middleware(
+    app,
+    query_param="query",
+    *,
+    use_simple_query_string: bool = False,
+    escape_special_chars: bool = False,
+):
     @app.before_request
     def before_request():
         # Store all query parameters
@@ -24,7 +30,11 @@ def flask_query_parser_middleware(app, query_param="query"):
         query_string = request.args.get(query_param)
         if query_string:
             try:
-                parsed_query = parse_query(query_string)
+                parsed_query = parse_query(
+                    query_string,
+                    use_simple_query_string=use_simple_query_string,
+                    escape_special_chars=escape_special_chars,
+                )
                 g.parsed_query = parsed_query
             except ValueError:
                 g.parsed_query = None
@@ -32,16 +42,28 @@ def flask_query_parser_middleware(app, query_param="query"):
 
 # FastAPI Middleware
 class FastAPIQueryParserMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app: Any, query_param: str = "query"):
+    def __init__(
+        self,
+        app: Any,
+        query_param: str = "query",
+        use_simple_query_string: bool = False,
+        escape_special_chars: bool = False,
+    ):
         super().__init__(app)
         self.query_param = query_param
+        self.use_simple_query_string = use_simple_query_string
+        self.escape_special_chars = escape_special_chars
 
     async def dispatch(self, request: Request, call_next):
         try:
             query_string = request.query_params.get(self.query_param)
             if query_string:
                 try:
-                    parsed_query = parse_query(query_string)
+                    parsed_query = parse_query(
+                        query_string,
+                        use_simple_query_string=self.use_simple_query_string,
+                        escape_special_chars=self.escape_special_chars,
+                    )
                     request.scope["parsed_query"] = parsed_query
                 except ValueError:
                     request.scope["parsed_query"] = None
@@ -49,7 +71,9 @@ class FastAPIQueryParserMiddleware(BaseHTTPMiddleware):
                 request.scope["parsed_query"] = None
         except Exception as e:
             _logger = __import__("logging").getLogger(__name__)
-            _logger.exception(f"Error in FastAPIQueryParserMiddleware: {e}")
+            _logger.exception(
+                f"Error in FastAPIQueryParserMiddleware for query: {request.query_params.get(self.query_param)} {e}"
+            )
             request.scope["parsed_query"] = None
 
         response = await call_next(request)

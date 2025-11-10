@@ -31,6 +31,39 @@ class FlaskMiddlewareTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json, {"error": "Invalid query"})
 
+    def test_flask_middleware_can_emit_simple_query_string(self):
+        app = Flask(__name__)
+        flask_query_parser_middleware(app, use_simple_query_string=True)
+
+        @app.route("/simple")
+        @use_flask_query_parser
+        def simple(parsed_query=None):
+            if parsed_query:
+                return parsed_query
+            return {"error": "invalid"}
+
+        client = app.test_client()
+        response = client.get("/simple?query=hej+då")
+        self.assertEqual(
+            response.json,
+            {"simple_query_string": {"query": "hej då"}},
+        )
+
+    def test_flask_middleware_can_escape_query_string_chars(self):
+        app = Flask(__name__)
+        flask_query_parser_middleware(app, escape_special_chars=True)
+
+        @app.route("/escape")
+        @use_flask_query_parser
+        def escape(parsed_query=None):
+            return parsed_query or {}
+
+        client = app.test_client()
+        response = client.get("/escape?query=hej+då!")
+        self.assertEqual(
+            response.json,
+            {"query_string": {"query": "hej då\\!"}},
+        )
 
 class FastAPIMiddlewareTestCase(unittest.TestCase):
     def setUp(self):
@@ -119,6 +152,44 @@ class FastAPIMiddlewareTestCase(unittest.TestCase):
         self.assertIn(
             "requires the decorated function to accept a FastAPI Request",
             str(cm.exception),
+        )
+
+    def test_fastapi_middleware_simple_query_string_flag(self):
+        app = FastAPI()
+        app.add_middleware(
+            FastAPIQueryParserMiddleware, use_simple_query_string=True
+        )
+
+        @app.get("/simple")
+        @use_fastapi_query_parser
+        async def simple(request: Request, parsed_query: dict = None):
+            return parsed_query or {}
+
+        client = TestClient(app)
+        response = client.get("/simple?query=hej+då")
+        self.assertEqual(
+            response.json(),
+            {"simple_query_string": {"query": "hej då"}},
+        )
+
+    def test_fastapi_middleware_escape_special_chars_flag(self):
+        app = FastAPI()
+        app.add_middleware(
+            FastAPIQueryParserMiddleware,
+            query_param="q",
+            escape_special_chars=True,
+        )
+
+        @app.get("/escape")
+        @use_fastapi_query_parser
+        async def escape(request: Request, parsed_query: dict = None):
+            return parsed_query or {}
+
+        client = TestClient(app)
+        response = client.get("/escape?q=hej+då!")
+        self.assertEqual(
+            response.json(),
+            {"query_string": {"query": "hej då\\!"}},
         )
 
 

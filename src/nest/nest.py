@@ -18,6 +18,7 @@ from tatsu.exceptions import FailedParse
 from typing import Dict, Any
 from tatsu.util import asjson
 import logging
+import re
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -155,8 +156,21 @@ GRAMMAR = r"""
 # Precompile the grammar
 _PARSER = compile(GRAMMAR)
 
+QUERY_STRING_SPECIAL_CHAR_PATTERN = re.compile(
+    r"(?<!\\)([+\-=&|><!(){}\[\]^\"~*?\\/])"
+)
 
-def parse_query(query_string: str) -> Dict[str, Any]:
+
+def escape_query_string_special_chars(query: str) -> str:
+    return QUERY_STRING_SPECIAL_CHAR_PATTERN.sub(r"\\\1", query)
+
+
+def parse_query(
+    query_string: str,
+    *,
+    use_simple_query_string: bool = False,
+    escape_special_chars: bool = False,
+) -> Dict[str, Any]:
     """
     Parses a query string into the Elasticsearch Query DSL.
 
@@ -181,7 +195,12 @@ def parse_query(query_string: str) -> Dict[str, Any]:
             if isinstance(item, dict)
         }
         expr = ast_json.get("expr") if isinstance(ast_json, dict) else ast_json
-        return ast_to_es(expr, directives)
+        return ast_to_es(
+            expr,
+            directives,
+            use_simple_query_string=use_simple_query_string,
+            escape_special_chars=escape_special_chars,
+        )
     except FailedParse as e:
         logger.error(f"Failed to parse query: {query_string}")
         error_msg = str(e)
@@ -192,7 +211,13 @@ def parse_query(query_string: str) -> Dict[str, Any]:
         raise ValueError(f"Invalid query string: {query_string}. {error_msg}") from e
 
 
-def ast_to_es(ast: Any, directives: Dict[str, str] | None = None) -> Dict[str, Any]:
+def ast_to_es(
+    ast: Any,
+    directives: Dict[str, str] | None = None,
+    *,
+    use_simple_query_string: bool = False,
+    escape_special_chars: bool = False,
+) -> Dict[str, Any]:
     """
     Converts an abstract syntax tree (AST) into an Elasticsearch-compatible JSON query.
 
@@ -270,6 +295,14 @@ def ast_to_es(ast: Any, directives: Dict[str, str] | None = None) -> Dict[str, A
         return node
 
     def apply_query_string_options(query: Dict[str, Any]) -> Dict[str, Any]:
+        clause_name = "simple_query_string" if use_simple_query_string else "query_string"
+        clause_body = dict(query)
+
+        if not use_simple_query_string and escape_special_chars:
+            q_value = clause_body.get("query")
+            if isinstance(q_value, str):
+                clause_body["query"] = escape_query_string_special_chars(q_value)
+
         options: Dict[str, Any] = {}
         for key in QUERY_STRING_OPTION_KEYS:
             if key not in directives:
@@ -282,9 +315,11 @@ def ast_to_es(ast: Any, directives: Dict[str, str] | None = None) -> Dict[str, A
                     options[key] = parsed_fields
                 continue
             options[key] = value
-        if not options:
-            return {"query_string": query}
-        return {"query_string": {**query, **options}}
+
+        if options:
+            clause_body.update(options)
+
+        return {clause_name: clause_body}
 
     def create_match(field: str, value: str) -> Dict[str, Any]:
         return {"match": {field: value}}
@@ -382,7 +417,7 @@ def ast_to_es(ast: Any, directives: Dict[str, str] | None = None) -> Dict[str, A
                 return {
                     "bool": {"must": [process_expr(sub_expr1), process_expr(sub_expr2)]}
                 }
-            case [sub_expr1, operator, sub_expr2]:
+            case [sub_expr1, operator, sub_expr2] if operator in {"AND", "OR", "~"}:
                 return create_bool_query(
                     operator, [process_expr(sub_expr1), process_expr(sub_expr2)]
                 )

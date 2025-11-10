@@ -8,6 +8,10 @@ These doctests cover the behaviour previously exercised in ``test_parse_query``.
     >>> from nest.nest import parse_query
     >>> parse_query("keyword") == {'query_string': {'query': 'keyword'}}
     True
+    >>> parse_query("keyword", use_simple_query_string=True) == {'simple_query_string': {'query': 'keyword'}}
+    True
+    >>> parse_query("hej!", escape_special_chars=True) == {'query_string': {'query': 'hej\\!'}}
+    True
 
     >>> parse_query("date:[2022-01-13 TO now]") == {'range': {'date': {'gte': '2022-01-13', 'lte': 'now'}}}
     True
@@ -83,6 +87,23 @@ These doctests cover the behaviour previously exercised in ``test_parse_query``.
     ...             {'match': {'texttype': 'dikt'}}
     ...         ],
     ...         'minimum_should_match': 1
+    ...     }
+    ... }
+    True
+
+    >>> parse_query("@type=cross_fields @default_operator=AND @fields=autocomplete.scandinavian (has_epub:true) AND (kriget är förklarat!)") == {
+    ...     'bool': {
+    ...         'must': [
+    ...             {'match': {'has_epub': 'true'}},
+    ...             {
+    ...                 'query_string': {
+    ...                     'query': 'kriget är förklarat!',
+    ...                     'type': 'cross_fields',
+    ...                     'default_operator': 'AND',
+    ...                     'fields': ['autocomplete.scandinavian']
+    ...                 }
+    ...             }
+    ...         ]
     ...     }
     ... }
     True
