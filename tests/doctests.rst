@@ -12,6 +12,8 @@ These doctests cover the behaviour previously exercised in ``test_parse_query``.
     True
     >>> parse_query("hej!", escape_special_chars=True) == {'query_string': {'query': 'hej\\!'}}
     True
+    >>> parse_query("bibeln?", escape_special_chars=True) == {'query_string': {'query': 'bibeln?'}}
+    True
 
     >>> parse_query("date:[2022-01-13 TO now]") == {'range': {'date': {'gte': '2022-01-13', 'lte': 'now'}}}
     True

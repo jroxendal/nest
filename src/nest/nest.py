@@ -156,13 +156,11 @@ GRAMMAR = r"""
 # Precompile the grammar
 _PARSER = compile(GRAMMAR)
 
-QUERY_STRING_SPECIAL_CHAR_PATTERN = re.compile(
-    r"(?<!\\)([+\-=&|><!(){}\[\]^\"~*?\\/])"
-)
+QUERY_STRING_SPECIAL_CHAR_PATTERN = re.compile(r"(?<!\\)(!)")
 
 
 def escape_query_string_special_chars(query: str) -> str:
-    return QUERY_STRING_SPECIAL_CHAR_PATTERN.sub(r"\\\1", query)
+    return QUERY_STRING_SPECIAL_CHAR_PATTERN.sub(r"\\!", query)
 
 
 def parse_query(
@@ -295,7 +293,9 @@ def ast_to_es(
         return node
 
     def apply_query_string_options(query: Dict[str, Any]) -> Dict[str, Any]:
-        clause_name = "simple_query_string" if use_simple_query_string else "query_string"
+        clause_name = (
+            "simple_query_string" if use_simple_query_string else "query_string"
+        )
         clause_body = dict(query)
 
         if not use_simple_query_string and escape_special_chars:
@@ -440,7 +440,9 @@ def ast_to_es(
 
 if __name__ == "__main__":
     # Example usage
-    example_query = "@default_field=title (gender:female OR authors>(gender:female ~ NOT _exists_:type)) AND (texttype:(diktsamling OR dikt)) AND ((export>type:pdf AND license:pd) OR mediatype:pdf)"
+    example_query = (
+        "@type=cross_fields @default_operator=AND @fields=autocomplete.scandinavian *"
+    )
     es_query = parse_query(example_query)
     import json
 
