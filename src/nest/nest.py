@@ -157,6 +157,7 @@ GRAMMAR = r"""
 _PARSER = compile(GRAMMAR)
 
 QUERY_STRING_SPECIAL_CHAR_PATTERN = re.compile(r"(?<!\\)(!)")
+ESCAPED_VALUE_CHAR_PATTERN = re.compile(r"\\(.)")
 
 
 def escape_query_string_special_chars(query: str) -> str:
@@ -322,6 +323,10 @@ def ast_to_es(
         return {clause_name: clause_body}
 
     def create_match(field: str, value: str) -> Dict[str, Any]:
+        if isinstance(value, str):
+            if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+                value = value[1:-1]
+            value = ESCAPED_VALUE_CHAR_PATTERN.sub(r"\1", value)
         return {"match": {field: value}}
 
     def create_exists(field: str) -> Dict[str, Any]:

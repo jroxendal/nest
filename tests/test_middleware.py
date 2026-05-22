@@ -4,6 +4,15 @@ from nest.middleware import flask_query_parser_middleware, use_flask_query_parse
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from nest.middleware import FastAPIQueryParserMiddleware, use_fastapi_query_parser
+from nest.nest import parse_query
+
+
+class ParseQueryTestCase(unittest.TestCase):
+    def test_field_match_unescapes_quoted_hyphenated_value(self):
+        self.assertEqual(
+            parse_query('keyword:"SLS\\-FI"'),
+            {"match": {"keyword": "SLS-FI"}},
+        )
 
 
 class FlaskMiddlewareTestCase(unittest.TestCase):
