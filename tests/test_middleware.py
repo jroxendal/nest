@@ -14,6 +14,45 @@ class ParseQueryTestCase(unittest.TestCase):
             {"match": {"keyword": "SLS-FI"}},
         )
 
+    def test_plus_terms_are_required(self):
+        self.assertEqual(
+            parse_query("+vistelse +vattnet"),
+            {
+                "bool": {
+                    "must": [
+                        {"query_string": {"query": "vistelse"}},
+                        {"query_string": {"query": "vattnet"}},
+                    ]
+                }
+            },
+        )
+
+    def test_minus_terms_are_prohibited(self):
+        self.assertEqual(
+            parse_query("vistelse -vattnet"),
+            {
+                "bool": {
+                    "must": [{"query_string": {"query": "vistelse"}}],
+                    "must_not": [{"query_string": {"query": "vattnet"}}],
+                }
+            },
+        )
+
+    def test_plus_and_minus_field_matches(self):
+        self.assertEqual(
+            parse_query("+source:litteraturkartan -status:draft"),
+            {
+                "bool": {
+                    "must": [{"match": {"source": "litteraturkartan"}}],
+                    "must_not": [{"match": {"status": "draft"}}],
+                }
+            },
+        )
+
+    def test_mixed_field_match_and_keywords_is_invalid(self):
+        with self.assertRaises(ValueError):
+            parse_query("title:kriget är förklarat!")
+
 
 class FlaskMiddlewareTestCase(unittest.TestCase):
     def setUp(self):

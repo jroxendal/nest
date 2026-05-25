@@ -79,9 +79,28 @@ GRAMMAR = r"""
     primary
         = '(' ~ @:expr ')'
         | nested_query
+        | signed_sequence
         | basic_match
         | keyword_sequence
         | keyword_query
+        ;
+
+    signed_sequence
+        = first:signed_atom rest:{signed_atom}
+        ;
+
+    signed_atom
+        = sign:signed_operator atom:signable_atom
+        | atom:signable_atom
+        ;
+
+    signed_operator
+        = '+' | '-'
+        ;
+
+    signable_atom
+        = basic_match
+        | keyword
         ;
     
     nested_query
@@ -256,11 +275,22 @@ def ast_to_es(
         node = unwrap(node)
 
         if isinstance(node, dict):
+            if "atom" in node and set(node.keys()) <= {"sign", "atom"}:
+                atom = simplify(node["atom"])
+                if "sign" in node:
+                    return {"sign": node["sign"], "atom": atom}
+                return atom
+
             if "first" in node:
-                tokens = [node["first"], *(node.get("rest") or [])]
+                tokens = [
+                    simplify(token)
+                    for token in [node["first"], *(node.get("rest") or [])]
+                ]
                 tokens = [t for t in tokens if t is not None]
                 if len(tokens) == 1:
                     return tokens[0]
+                if any(isinstance(t, dict) and "sign" in t for t in tokens):
+                    return {"signed_sequence": tokens}
                 return tokens
 
             if "path" in node and "query" in node:
@@ -341,6 +371,23 @@ def ast_to_es(
             bool_query["bool"]["minimum_should_match"] = 1
         return bool_query
 
+    def create_signed_bool_query(tokens: list) -> Dict[str, Any]:
+        bool_body: Dict[str, Any] = {}
+        for token in tokens:
+            if isinstance(token, dict) and "sign" in token:
+                sign = token["sign"]
+                atom = token["atom"]
+            else:
+                sign = "+"
+                atom = token
+
+            clause = process_expr(atom)
+            if sign == "-":
+                bool_body.setdefault("must_not", []).append(clause)
+            else:
+                bool_body.setdefault("must", []).append(clause)
+        return {"bool": bool_body}
+
     def prefix_nested_fields(query: Dict[str, Any], path: str) -> Dict[str, Any]:
         def prefix_field(field_name: str) -> str:
             return (
@@ -396,6 +443,8 @@ def ast_to_es(
                 # Treat space-separated keywords as a single query_string expression.
                 combined = " ".join(tokens)
                 return apply_query_string_options({"query": combined})
+            case {"signed_sequence": tokens}:
+                return create_signed_bool_query(tokens)
             case {"field": field, "group": group_expr}:
 
                 def apply_group(expr):
@@ -433,6 +482,8 @@ def ast_to_es(
             case list() as items if all(isinstance(item, str) for item in items):
                 combined = " ".join(items)
                 return apply_query_string_options({"query": combined})
+            case list():
+                raise ValueError(f"Unsupported mixed query expression: {expr}")
             case str():
                 return apply_query_string_options({"query": expr})
             case _:

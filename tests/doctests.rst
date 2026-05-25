@@ -24,6 +24,24 @@ These doctests cover the behaviour previously exercised in ``test_parse_query``.
     >>> parse_query("_exists_:type") == {'exists': {'field': 'type'}}
     True
 
+    >>> parse_query("+vistelse +vattnet") == {
+    ...     'bool': {
+    ...         'must': [
+    ...             {'query_string': {'query': 'vistelse'}},
+    ...             {'query_string': {'query': 'vattnet'}}
+    ...         ]
+    ...     }
+    ... }
+    True
+
+    >>> parse_query("vistelse -vattnet") == {
+    ...     'bool': {
+    ...         'must': [{'query_string': {'query': 'vistelse'}}],
+    ...         'must_not': [{'query_string': {'query': 'vattnet'}}]
+    ...     }
+    ... }
+    True
+
     >>> parse_query("@default_field=title hej") == {'query_string': {'query': 'hej', 'default_field': 'title'}}
     True
 
