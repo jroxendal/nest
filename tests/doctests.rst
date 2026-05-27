@@ -41,6 +41,19 @@ These doctests cover the behaviour previously exercised in ``test_parse_query``.
     ... }
     True
 
+    >>> parse_query('"vatten"') == {'query_string': {'query': '"vatten"'}}
+    True
+
+    >>> parse_query('+"en vistelse"') == {
+    ...     'bool': {
+    ...         'must': [{'query_string': {'query': '"en vistelse"'}}]
+    ...     }
+    ... }
+    True
+
+    >>> parse_query('header:"En vistelse"') == {'match': {'header': 'En vistelse'}}
+    True
+
     >>> parse_query("vistelse -vattnet") == {
     ...     'bool': {
     ...         'must': [{'query_string': {'query': 'vistelse'}}],

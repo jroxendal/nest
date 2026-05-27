@@ -37,6 +37,28 @@ class ParseQueryTestCase(unittest.TestCase):
             },
         )
 
+    def test_quoted_term_uses_query_string_phrase_syntax(self):
+        self.assertEqual(
+            parse_query('"vatten"'),
+            {"query_string": {"query": '"vatten"'}},
+        )
+
+    def test_signed_quoted_phrase_stays_single_required_clause(self):
+        self.assertEqual(
+            parse_query('+"en vistelse"'),
+            {
+                "bool": {
+                    "must": [{"query_string": {"query": '"en vistelse"'}}],
+                }
+            },
+        )
+
+    def test_field_match_accepts_quoted_phrase_value(self):
+        self.assertEqual(
+            parse_query('header:"En vistelse"'),
+            {"match": {"header": "En vistelse"}},
+        )
+
     def test_minus_terms_are_prohibited(self):
         self.assertEqual(
             parse_query("vistelse -vattnet"),

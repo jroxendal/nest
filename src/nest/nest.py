@@ -146,7 +146,8 @@ GRAMMAR = r"""
         ;
 
     keyword_query
-        = /[^\s:>()[\]{}+]+/
+        = quoted_string
+        | /[^\s:>()[\]{}+"]+/
         ;
 
     keyword_sequence
@@ -154,7 +155,11 @@ GRAMMAR = r"""
         ;
 
     keyword
-        = !("AND" | "OR" | "NOT") /[^\s:>()[\]{}+~]+/
+        = !("AND" | "OR" | "NOT") (quoted_string | /[^\s:>()[\]{}+~"]+/)
+        ;
+
+    quoted_string
+        = /"(?:[^"\\]|\\.)*"/
         ;
 
     field 
@@ -168,7 +173,8 @@ GRAMMAR = r"""
 
     
     value
-        = /[^\s:>()[\]{}+]+/
+        = quoted_string
+        | /[^\s:>()[\]{}+"]+/
         ;
 """
 
