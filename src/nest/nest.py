@@ -287,10 +287,10 @@ def ast_to_es(
                     for token in [node["first"], *(node.get("rest") or [])]
                 ]
                 tokens = [t for t in tokens if t is not None]
-                if len(tokens) == 1:
-                    return tokens[0]
                 if any(isinstance(t, dict) and "sign" in t for t in tokens):
                     return {"signed_sequence": tokens}
+                if len(tokens) == 1:
+                    return tokens[0]
                 return tokens
 
             if "path" in node and "query" in node:

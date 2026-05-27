@@ -27,6 +27,16 @@ class ParseQueryTestCase(unittest.TestCase):
             },
         )
 
+    def test_single_plus_term_is_required(self):
+        self.assertEqual(
+            parse_query("+nissan"),
+            {
+                "bool": {
+                    "must": [{"query_string": {"query": "nissan"}}],
+                }
+            },
+        )
+
     def test_minus_terms_are_prohibited(self):
         self.assertEqual(
             parse_query("vistelse -vattnet"),
@@ -34,6 +44,16 @@ class ParseQueryTestCase(unittest.TestCase):
                 "bool": {
                     "must": [{"query_string": {"query": "vistelse"}}],
                     "must_not": [{"query_string": {"query": "vattnet"}}],
+                }
+            },
+        )
+
+    def test_single_minus_term_is_prohibited(self):
+        self.assertEqual(
+            parse_query("-nissan"),
+            {
+                "bool": {
+                    "must_not": [{"query_string": {"query": "nissan"}}],
                 }
             },
         )

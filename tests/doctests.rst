@@ -34,6 +34,13 @@ These doctests cover the behaviour previously exercised in ``test_parse_query``.
     ... }
     True
 
+    >>> parse_query("+nissan") == {
+    ...     'bool': {
+    ...         'must': [{'query_string': {'query': 'nissan'}}]
+    ...     }
+    ... }
+    True
+
     >>> parse_query("vistelse -vattnet") == {
     ...     'bool': {
     ...         'must': [{'query_string': {'query': 'vistelse'}}],
